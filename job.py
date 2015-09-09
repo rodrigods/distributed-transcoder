@@ -1,4 +1,6 @@
+import os
 import uuid
+
 from mrjob.job import MRJob
 
 
@@ -15,32 +17,26 @@ class TranscoderJob(MRJob):
         self.files_root = self.options.files_root
 
     def _fetch_file(self, filename):
-        return open(self.files_root + '/' + filename, 'r')
+        with open(os.path.join(self.files_root, filename), 'r') as f:
+            return f.read()
 
     def _transcode(self, chunk):
         return ''.join(str(ord(ch)) for ch in chunk)
 
     def _transfer_transcoded_file(self, transcoded_chunk):
         filename = uuid.uuid4().hex
-        f = open(self.files_root + '/' + filename, 'w')
-        f.write(transcoded_chunk + '\n')
-        f.close()
-
+        with open(os.path.join(self.files_root, filename), 'w') as t_file:
+            t_file.write(transcoded_chunk)
         return filename
 
     def mapper(self, _, filename):
-        chunk_file = self._fetch_file(filename)
-        key, chunk = tuple(chunk_file.read().split())
+        key, chunk = tuple(self._fetch_file(filename).split())
         transcoded_chunk = self._transcode(chunk)
         transcoded_filename = self._transfer_transcoded_file(transcoded_chunk)
         yield key, transcoded_filename
 
     def reducer(self, key, values):
-        result = ''
-        for f in values:
-            result += (self._fetch_file(f).read() + '\n')
-
-        yield key, result
+        yield key, '\n'.join([self._fetch_file(f) for f in values])
 
 
 if __name__ == '__main__':
